@@ -2232,6 +2232,7 @@ Show commit description and changes in a revision
 * `--context <CONTEXT>` — Number of lines of context to show
 * `--ignore-all-space` — Ignore whitespace when comparing lines
 * `--ignore-space-change` — Ignore changes in amount of whitespace when comparing lines
+* `-P`, `--no-patch` — Do not show the patch
 
 
 

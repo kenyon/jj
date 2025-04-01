@@ -103,6 +103,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   which branch in the `jj log` graph is displayed on the left instead of `@`
   (e.g. `coalesce(description("megamerge\n"), trunk())`)
 
+* `jj show` patches can now be suppressed with `--no-patch`.
+
 ### Fixed bugs
 
 * `jj log -p --stat` now shows diff stats as well as the default color-words/git
