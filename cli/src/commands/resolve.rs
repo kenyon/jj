@@ -59,7 +59,12 @@ pub(crate) struct ResolveArgs {
     #[arg(long, short)]
     list: bool,
     /// Specify 3-way merge tool to be used
-    #[arg(long, conflicts_with = "list", value_name = "NAME")]
+    #[arg(
+        long,
+        conflicts_with = "list",
+        value_name = "NAME",
+        add = ArgValueCandidates::new(complete::merge_tools),
+    )]
     tool: Option<String>,
     /// Only resolve conflicts in these paths. You can use the `--list` argument
     /// to find paths to use here.
