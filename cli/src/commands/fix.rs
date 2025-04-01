@@ -20,13 +20,13 @@ use std::process::Stdio;
 use clap_complete::ArgValueCandidates;
 use itertools::Itertools as _;
 use jj_lib::backend::CommitId;
-use jj_lib::backend::FileId;
 use jj_lib::fileset;
 use jj_lib::fileset::FilesetDiagnostics;
 use jj_lib::fileset::FilesetExpression;
 use jj_lib::fix::fix_files;
 use jj_lib::fix::FileToFix;
 use jj_lib::fix::FixError;
+use jj_lib::fix::FixResult;
 use jj_lib::fix::ParallelFileFixer;
 use jj_lib::matchers::Matcher;
 use jj_lib::repo_path::RepoPathUiConverter;
@@ -179,7 +179,7 @@ fn fix_one_file(
     tools_config: &ToolsConfig,
     store: &Store,
     file_to_fix: &FileToFix,
-) -> Result<Option<FileId>, FixError> {
+) -> Result<FixResult, FixError> {
     let mut matching_tools = tools_config
         .tools
         .iter()
@@ -211,10 +211,10 @@ fn fix_one_file(
             let new_file_id = store
                 .write_file(&file_to_fix.repo_path, &mut new_content.as_slice())
                 .block_on()?;
-            return Ok(Some(new_file_id));
+            return Ok(FixResult::Fixed { new_file_id });
         }
     }
-    Ok(None)
+    Ok(FixResult::Unchanged)
 }
 
 /// Runs the `tool_command` to fix the given file content.

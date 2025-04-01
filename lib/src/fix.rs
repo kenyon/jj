@@ -74,9 +74,11 @@ pub struct InvalidContentInfo {
 /// The results of attempting to fix a given file.
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum FixResult {
-    /// The file content was fixed and the new content was stored, producing a
-    /// new FileId.
-    Fixed(FileId),
+    /// The file content was fixed and the new content was stored.
+    Fixed {
+        /// The id of the new file contents.
+        new_file_id: FileId,
+    },
     /// The file content was already correct.
     Unchanged,
     /// The file cannot be fixed due to errors in the current content.
@@ -152,7 +154,7 @@ pub struct ParallelFileFixer<T> {
 
 impl<T> ParallelFileFixer<T>
 where
-    T: Fn(&Store, &FileToFix) -> Result<Option<FileId>, FixError> + Sync + Send,
+    T: Fn(&Store, &FileToFix) -> Result<FixResult, FixError> + Sync + Send,
 {
     /// Creates a ParallelFileFixer.
     pub fn new(fix_fn: T) -> Self {
@@ -162,7 +164,7 @@ where
 
 impl<T> FileFixer for ParallelFileFixer<T>
 where
-    T: Fn(&Store, &FileToFix) -> Result<Option<FileId>, FixError> + Sync + Send,
+    T: Fn(&Store, &FileToFix) -> Result<FixResult, FixError> + Sync + Send,
 {
     /// Applies `fix_fn()` to the inputs and stores the resulting file content.
     fn fix_files<'a>(
@@ -174,20 +176,15 @@ where
         files_to_fix.into_par_iter().try_for_each_init(
             || updates_tx.clone(),
             |updates_tx, file_to_fix| -> Result<(), FixError> {
-                let result = (self.fix_fn)(store, file_to_fix)?;
-                match result {
-                    Some(new_file_id) => {
-                        updates_tx.send((file_to_fix, new_file_id)).unwrap();
-                        Ok(())
-                    }
-                    None => Ok(()),
-                }
+                let fix_result = (self.fix_fn)(store, file_to_fix)?;
+                updates_tx.send((file_to_fix, fix_result)).unwrap();
+                Ok(())
             },
         )?;
         drop(updates_tx);
         let mut result = HashMap::new();
-        while let Ok((file_to_fix, new_file_id)) = updates_rx.recv() {
-            result.insert(file_to_fix, FixResult::Fixed(new_file_id));
+        while let Ok((file_to_fix, fix_result)) = updates_rx.recv() {
+            result.insert(file_to_fix, fix_result);
         }
         Ok(result)
     }
@@ -324,7 +321,7 @@ pub fn fix_files(
                     };
                     if let Some(fix_result) = fixed_file_ids.get(&file_to_fix) {
                         match fix_result {
-                            FixResult::Fixed(new_file_id) => {
+                            FixResult::Fixed { new_file_id } => {
                                 return Some(TreeValue::File {
                                     id: new_file_id.clone(),
                                     executable: *executable,
@@ -332,7 +329,6 @@ pub fn fix_files(
                             }
                             FixResult::Unchanged => {
                                 // TODO: add counters for this in FixSummary
-                                todo!()
                             }
                             FixResult::InvalidContent(_info) => {
                                 // TODO: include this information in FixSummary, keyed by commit_id
