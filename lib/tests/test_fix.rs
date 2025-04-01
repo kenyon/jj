@@ -24,6 +24,7 @@ use jj_lib::fix::fix_files;
 use jj_lib::fix::FileFixer;
 use jj_lib::fix::FileToFix;
 use jj_lib::fix::FixError;
+use jj_lib::fix::FixResult;
 use jj_lib::fix::ParallelFileFixer;
 use jj_lib::matchers::EverythingMatcher;
 use jj_lib::merged_tree::MergedTree;
@@ -53,11 +54,11 @@ impl FileFixer for TestFileFixer {
         &self,
         store: &Store,
         files_to_fix: &'a HashSet<FileToFix>,
-    ) -> Result<HashMap<&'a FileToFix, FileId>, FixError> {
+    ) -> Result<HashMap<&'a FileToFix, FixResult>, FixError> {
         let mut changed_files = HashMap::new();
         for file_to_fix in files_to_fix {
             if let Some(new_file_id) = fix_file(store, file_to_fix)? {
-                changed_files.insert(file_to_fix, new_file_id);
+                changed_files.insert(file_to_fix, FixResult::Fixed(new_file_id));
             }
         }
         Ok(changed_files)

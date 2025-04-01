@@ -58,6 +58,33 @@ pub struct FileToFix {
     pub repo_path: RepoPathBuf,
 }
 
+/// Contains information returned by the FileFixer about a file that cannot be
+/// fixed due to errors in the current content.
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct InvalidContentInfo {
+    /// Errors returned by the fixer. For instance, if the program is not
+    /// syntactically valid, errors will be returned here instead.
+    pub errors: String,
+    /// The approximate location in the original file of the first error
+    /// returned by the fixer. An editor could use line to position the
+    /// cursor after a failed formatting attempt.
+    pub line: Option<u32>,
+}
+
+/// The results of attempting to fix a given file.
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum FixResult {
+    /// The file content was fixed and the new content was stored, producing a
+    /// new FileId.
+    Fixed(FileId),
+    /// The file content was already correct.
+    Unchanged,
+    /// The file cannot be fixed due to errors in the current content.
+    InvalidContent(InvalidContentInfo),
+    /// The file cannot be processed because the content is too large.
+    FileTooLarge,
+}
+
 /// Error fixing files.
 #[derive(Debug, thiserror::Error)]
 pub enum FixError {
@@ -86,14 +113,11 @@ pub trait FileFixer {
     /// Returns a map describing the subset of `files_to_fix` that resulted in
     /// changed file content (unchanged files should not be present in the map),
     /// pointing to the new FileId for the file.
-    ///
-    /// TODO: Better error handling so we can tell the user what went wrong with
-    /// each failed input.
     fn fix_files<'a>(
         &self,
         store: &Store,
         files_to_fix: &'a HashSet<FileToFix>,
-    ) -> Result<HashMap<&'a FileToFix, FileId>, FixError>;
+    ) -> Result<HashMap<&'a FileToFix, FixResult>, FixError>;
 }
 
 /// Aggregate information about the outcome of the file fixer.
@@ -102,8 +126,15 @@ pub struct FixSummary {
     /// The commits that were rewritten. Maps old commit id to new commit id.
     pub rewrites: HashMap<CommitId, CommitId>,
 
+    /// Information about files which cannot be fixed due to invalid contents.
+    pub invalid_files: HashMap<CommitId, HashMap<RepoPathBuf, InvalidContentInfo>>,
+
+    /// Information about files which cannot be fixed due to being too big.
+    pub large_files: HashMap<CommitId, HashSet<RepoPathBuf>>,
+
     /// The number of commits that had files that were passed to the file fixer.
     pub num_checked_commits: i32,
+
     /// The number of new commits created due to file content changed by the
     /// fixer.
     pub num_fixed_commits: i32,
@@ -138,7 +169,7 @@ where
         &self,
         store: &Store,
         files_to_fix: &'a HashSet<FileToFix>,
-    ) -> Result<HashMap<&'a FileToFix, FileId>, FixError> {
+    ) -> Result<HashMap<&'a FileToFix, FixResult>, FixError> {
         let (updates_tx, updates_rx) = channel();
         files_to_fix.into_par_iter().try_for_each_init(
             || updates_tx.clone(),
@@ -156,7 +187,7 @@ where
         drop(updates_tx);
         let mut result = HashMap::new();
         while let Ok((file_to_fix, new_file_id)) = updates_rx.recv() {
-            result.insert(file_to_fix, new_file_id);
+            result.insert(file_to_fix, FixResult::Fixed(new_file_id));
         }
         Ok(result)
     }
@@ -291,11 +322,29 @@ pub fn fix_files(
                         file_id: id.clone(),
                         repo_path: repo_path.clone(),
                     };
-                    if let Some(new_id) = fixed_file_ids.get(&file_to_fix) {
-                        return Some(TreeValue::File {
-                            id: new_id.clone(),
-                            executable: *executable,
-                        });
+                    if let Some(fix_result) = fixed_file_ids.get(&file_to_fix) {
+                        match fix_result {
+                            FixResult::Fixed(new_file_id) => {
+                                return Some(TreeValue::File {
+                                    id: new_file_id.clone(),
+                                    executable: *executable,
+                                });
+                            }
+                            FixResult::Unchanged => {
+                                // TODO: add counters for this in FixSummary
+                                todo!()
+                            }
+                            FixResult::InvalidContent(_info) => {
+                                // TODO: include this information in FixSummary, keyed by commit_id
+                                // and repo_path.
+                                todo!()
+                            }
+                            FixResult::FileTooLarge => {
+                                // TODO: include this information in FixSummary, keyed by commit_id
+                                // and repo_path.
+                                todo!()
+                            }
+                        }
                     }
                 }
                 old_term.clone()
